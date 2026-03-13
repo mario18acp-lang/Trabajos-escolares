@@ -1,0 +1,558 @@
+# Objetivo General
+Aplicar el algoritmo de K-Means para segmentar clientes en grupos con características similares, con el fin de diseñar estrategias de comunicación o marketing diferenciadas por segmento.
+
+# Datos
+Se utilizará la base de datos clientes_segmentacion.csv, que contiene información simulada sobre 200 clientes, incluyendo edad, ingresos, frecuencia de compra, y gasto promedio.
+
+# Codificación
+
+En el anexo se detalla el código tanto en R como en Python
+
+# 1. Análisis preliminar  
+
+
+Cargamos la DataBase con la información, y una vez verificado que no hay datos nulos, separamos la variables numericas y obtenemos los estadísticos.
+```{r}
+#| eval: true
+#| echo: false
+
+#Importamos librerias
+
+library(cluster)
+library(factoextra)
+library(ggplot2)
+library(dplyr)
+
+#Cargamos la DataBase con la información
+data = read.csv("clientes_segmentacion.csv")
+sum(is.na(data))
+```
+
+```{r}
+#| eval: true
+#| echo: false
+
+# Separar las variables numericas y obtener los estadísticos.
+numericas = data[sapply(data, is.numeric)]
+
+```
+
+```{r}
+#| eval: false
+#| echo: false
+
+summary(numericas)
+```
+
+
+| Estadístico | edad  | ingreso_mens | frecuencia_compra | monto_prom_compra | dias_ult_compra |
+|-------------|-------|--------------|-------------------|-------------------|-----------------|
+| Min         | 18.00 | 3627         | 1.00              | 113.0             | 0.00            |
+| 1st Qu.     | 32.00 | 13495        | 4.00              | 623.5             | 15.00           |
+| Median      | 44.00 | 17441        | 8.00              | 834.5             | 29.50           |
+| Mean        | 45.09 | 18128        | 7.86              | 823.2             | 29.52           |
+| 3rd Qu.     | 58.25 | 22540        | 11.25             | 1018.2            | 44.25           |
+| Max         | 70.00 | 40687        | 15.00             | 1767.0            | 60.00           |
+\pagebreak
+
+Un resúmen estadístico adicional con valores de tendencia central nos permite ver la variabilidad de los datos.
+
+```{r}
+#| eval: false
+#| echo: false
+#| 
+#Visualizacion del detalle del resumen estadistico
+
+estadisticos_df <- data.frame(
+  Variable = names(numericas),
+  Media    = sapply(numericas, mean, na.rm = TRUE),
+  Mediana  = sapply(numericas, median, na.rm = TRUE),
+  SD       = sapply(numericas, sd, na.rm = TRUE),
+  Var      = sapply(numericas, var, na.rm = TRUE),
+  Min      = sapply(numericas, min, na.rm = TRUE),
+  Max      = sapply(numericas, max, na.rm = TRUE)
+)
+# Ver la tabla
+print(as.data.frame(estadisticos_df))
+
+```
+
+| Variable              | Media   | Mediana | Desv. Est. | Varianza   | Min | Max  |
+|-----------------------|---------|---------|------------|------------|-----|------|
+| cliente_id            | 100.500 | 100.5   | 57.879185  | 3350.000   | 1   | 200  |
+| edad                  | 45.090  | 44.0    | 14.742067  | 217.3285   | 18  | 70   |
+| ingreso_mensual       | 18127.99| 17440.5 | 6905.8206  | 47690360   | 3627| 40687|
+| frecuencia_compra     | 7.860   | 8.0     | 4.262776   | 18.17126   | 1   | 15   |
+| monto_promedio_compra | 823.195 | 834.5   | 285.8047   | 81684.33   | 113 | 1767 |
+| dias_ultima_compra    | 29.515  | 29.5    | 16.585693  | 275.0852   | 0   | 60   |
+
+Usamos diagramas de caja para verificar la presencia de outliers.
+
+```{r}
+#| eval: true
+#| echo: false
+#| fig.width: 7.5
+#| fig.height: 3.3
+# Intepretamos los valores atipicos a partir de un grafico de caja para mejor interpretacion 
+par(mfrow = c(1, 2)) 
+## Boxplot para monto_promedio_compra
+boxplot(data$monto_promedio_compra,
+        main = "Boxplot de Monto Promedio de Compra",
+        ylab = "Monto promedio de compra",
+        col = "gray", outcol = "red", 
+        cex.main = 0.7, cex.axis = 0.7, cex.lab = 0.7, las = 1)
+# Boxplot para ingreso_mensual
+boxplot(data$ingreso_mensual,
+        main = "Boxplot de Ingreso Mensual",
+        ylab = "Ingreso mensual",
+        col = "gray",  outcol = "red", 
+        cex.main = 0.7, cex.axis = 0.7, cex.lab = 0.7, las = 1)
+par(mfrow = c(1, 1))
+```
+
+## Interpretación de datos estadísticos
+
+A partir de nuestros resultados, podemos encontrar un valor atípico el cual decidimos no descartar, debido a que se está realizando un estudio de mercado en el cual podemos tomar ese valor para diseñar estrategias más enfocadas a personas con mayor poder adquisitivo.
+
+
+# 2. Preparación de datos
+
+```{r}
+#| eval: true
+#| echo: false
+#Escala las variables
+clientes_scaled = data %>%
+  select(-cliente_id) %>%
+  scale()
+```
+
+Escalar los datos es fundamental en la clusterización porque los algoritmos (como k-means) calculan distancias entre observaciones. Si las variables están en escalas distintas (por ejemplo, ingresos en miles y edad en años), las de mayor magnitud dominan el cálculo y sesgan la formación de los clusters. Al escalar logramos que todas las variables aportan peso comparable.
+\pagebreak
+
+# 3. Número óptimo de clusters (K)
+
+```{r}
+#| eval: true
+#| echo: false
+#| fig.width: 5
+#| fig.height: 2.5
+#Aplicamos el metodo del codo para determinar los clusters que vamos a utilizar
+fviz_nbclust(clientes_scaled, FUN = kmeans, method = "wss") +
+  labs(title = "Método del codo")+
+  theme(
+    axis.title.x = element_text(size = 8), # Tamaño título eje X
+    axis.title.y = element_text(size = 8), # Tamaño título eje Y
+    axis.text.x = element_text(size = 6),  # Tamaño números eje X
+    axis.text.y = element_text(size = 6),  # Tamaño números eje Y
+    plot.title = element_text(size = 10, face = "bold", hjust = 0.5) # Título central
+  )
+```
+## Interpretación
+
+Con base en el análisis del método del codo, matemáticamente es más viable utilizar entre 4 y 5 clusters; sin embargo, para optimizar la información, así como por la variabilidad de los ingresos, consideramos más óptimo utilizar 4 clusters. Un quinto grupo no aportaba una diferenciación relevante en ingresos ni en comportamiento, pero sí aumentaba la complejidad y diluía el enfoque de las campañas, haciéndolas más costosas.
+
+# 4. Aplicación del algortimo K-means
+
+Se ajusta un modelo K-means para segmentar a los clientes
+
+```{r}
+#| eval: false
+#| echo: true
+modelo_kmeans = kmeans(clientes_scaled, centers = 4)
+```
+
+```{r}
+#| eval: false
+#| echo: false
+#semilla para garantizar resultados consistentes
+set.seed(123)
+#Aplicacion del modelo
+modelo_kmeans = kmeans(clientes_scaled, centers = 4)
+#Asignacion de cluster a cada ID de cliente
+data$Cluster = as.factor(modelo_kmeans$cluster)
+#Caracteristicas promedio de cada columna agrupados por el cluster
+data %>%
+  group_by(Cluster) %>%
+  summarise(
+    PromedioIngresoMensual      = mean(ingreso_mensual),
+    PromedioEdad                = mean(edad),
+    PromedioFrecuenciaCompra    = mean(frecuencia_compra),
+    PromedioMontoPromedioCompra = mean(monto_promedio_compra),
+    PromedioDiasUltimaCompra    = mean(dias_ultima_compra),
+    Conteo                      = n()
+  )
+```
+
+## Interpretación.
+
+Una vez ya clasificados los clusters, podemos comprobar que el cluster con menor frecuencia de compra es el número 2, a pesar de ser el cluster con mayor número de ID; mientras que el cluster con mayor frecuencia de compra es el número 1, y  el cluster 3 el de mayor monto promedio de compra.
+
+Entre el cluster 2 y 3, no hay una diferencia notable es el ingreso mensual, a pesar de tener una diferencia notable de edad, por lo que se podría hacer un diseño de campaña para- incitar la frecuencia de compra del cluster 3.
+
+Encontramos una área de oportunidad para brindarles ofertas premium a las personas del cluster 2 para mayorizar su índice de compra, ya que es un público que puede mostrarse indiferente a la hora de comprar.
+\pagebreak
+
+
+| Cl | Ing_M | Edad | Freq | Monto | Dias | N  |
+|----|-------|------|------|-------|------|----|
+| 1  | 13550 | 48.17| 12.42| 745.94|30.56 | 52 |
+| 2  | 16858 | 36.92| 4.66 | 816.37|40.90 | 62 |
+| 3  | 18769 | 60.17| 5.75 | 925.43|19.34 | 53 |
+| 4  | 26697 | 31.36| 10.06| 793.55|22.82 | 33 |
+
+# 5. Clasificación de un nuevo cliente.
+
+Se utilizará este modelo para segmentar a un nuevo cliente potencial que ha llegado a la empresa con las siguientes características:
+
+- Edad: 30 años
+- Ingreso mensual: $22,000
+- Frecuencia de compra mensual: 6 veces
+- Monto promedio por compra: $950
+- Días desde la última compra: 3 días
+
+```{r}
+#| eval: false
+#| echo: false
+#Aplicacion del modelo con un nuevo cliente
+nuevo_cliente = data.frame(
+  edad = 30,
+  ingreso_mensual = 22000,
+  frecuencia_compra = 6,
+  monto_promedio_compra = 950,
+  dias_ultima_compra = 3
+)
+
+media_original = attr(clientes_scaled, "scaled:center")
+sd_original = attr(clientes_scaled, "scaled:scale")
+
+nuevo_cliente_scaled = scale(nuevo_cliente,
+                             center = media_original,
+                             scale = sd_original)
+
+distancias = apply(modelo_kmeans$centers, 1,
+                   function(centroide) {
+                     sum((nuevo_cliente_scaled - centroide)^2)
+                   })
+
+cluster_predicho = which.min(distancias)
+cluster_predicho
+distancias
+```
+
+##  Manejo de resultados
+
+Con base en la aplicación del modelo, nos arroja que el nuevo cliente pertenece al cluster 4, el cual suele ser un cluster muy receptivo con las ofertas y tiene una frecuencia de compra activa; por lo que suman mucho sobre la estrategia de encontrar buenos compradores, a pesar de ser el cluster con menor número de clientes.
+
+Nuestras oportunidades con este grupo en particular se pueden reflejar con promociones o mejoras de precio en productos con mayor volumen, así como mantener una interacción constante con ellos.
+
+# Anexos
+
+## En R
+
+```{r}
+#| eval: false
+#| echo: true
+
+#Importamos librerias
+library(cluster)
+library(factoextra)
+library(ggplot2)
+library(dplyr)
+
+#Cargamos la DataBase con la información
+data = read.csv("clientes_segmentacion.csv")
+sum(is.na(data))
+```
+
+```{r}
+#| eval: false
+#| echo: true
+
+# Separar las variables numericas y obtener los estadísticos.
+numericas = data[sapply(data, is.numeric)]
+```
+
+```{r}
+#| eval: false
+#| echo: true
+
+summary(numericas)
+```
+
+```{r}
+#| eval: false
+#| echo: true
+
+#Visualizacion del detalle del resumen estadistico
+
+estadisticos_df <- data.frame(
+  Variable = names(numericas),
+  Media    = sapply(numericas, mean, na.rm = TRUE),
+  Mediana  = sapply(numericas, median, na.rm = TRUE),
+  SD       = sapply(numericas, sd, na.rm = TRUE),
+  Var      = sapply(numericas, var, na.rm = TRUE),
+  Min      = sapply(numericas, min, na.rm = TRUE),
+  Max      = sapply(numericas, max, na.rm = TRUE)
+)
+# Ver la tabla
+print(as.data.frame(estadisticos_df))
+```
+
+```{r}
+#| eval: false
+#| echo: true
+#| fig.width: 7.5
+#| fig.height: 3.3
+# Intepretamos los valores atipicos a partir de un grafico de caja para mejor interpretacion 
+par(mfrow = c(1, 2)) 
+## Boxplot para monto_promedio_compra
+boxplot(data$monto_promedio_compra,
+        main = "Boxplot de Monto Promedio de Compra",
+        ylab = "Monto promedio de compra",
+        col = "gray", outcol = "red", 
+        cex.main = 0.7, cex.axis = 0.7, cex.lab = 0.7, las = 1)
+# Boxplot para ingreso_mensual
+boxplot(data$ingreso_mensual,
+        main = "Boxplot de Ingreso Mensual",
+        ylab = "Ingreso mensual",
+        col = "gray",  outcol = "red", 
+        cex.main = 0.7, cex.axis = 0.7, cex.lab = 0.7, las = 1)
+par(mfrow = c(1, 1))
+```
+
+```{r}
+#| eval: false
+#| echo: true
+#Escala las variables
+clientes_scaled = data %>%
+  select(-cliente_id) %>%
+  scale()
+```
+
+```{r}
+#| eval: false
+#| echo: true
+#| fig.width: 5
+#| fig.height: 2.5
+#Aplicamos el metodo del codo para determinar los clusters que vamos a utilizar
+fviz_nbclust(clientes_scaled, FUN = kmeans, method = "wss") +
+  labs(title = "Método del codo")+
+  theme(
+    axis.title.x = element_text(size = 8), # Tamaño título eje X
+    axis.title.y = element_text(size = 8), # Tamaño título eje Y
+    axis.text.x = element_text(size = 6),  # Tamaño números eje X
+    axis.text.y = element_text(size = 6),  # Tamaño números eje Y
+    plot.title = element_text(size = 10, face = "bold", hjust = 0.5) # Título central
+  )
+```
+
+```{r}
+#| eval: false
+#| echo: true
+
+#semilla para garantizar resultados consistentes
+set.seed(123)
+#Aplicacion del modelo
+modelo_kmeans = kmeans(clientes_scaled, centers = 4)
+#Asignacion de cluster a cada ID de cliente
+data$Cluster = as.factor(modelo_kmeans$cluster)
+#Caracteristicas promedio de cada columna agrupados por el cluster
+data %>%
+  group_by(Cluster) %>%
+  summarise(
+    PromedioIngresoMensual      = mean(ingreso_mensual),
+    PromedioEdad                = mean(edad),
+    PromedioFrecuenciaCompra    = mean(frecuencia_compra),
+    PromedioMontoPromedioCompra = mean(monto_promedio_compra),
+    PromedioDiasUltimaCompra    = mean(dias_ultima_compra),
+    Conteo                      = n()
+  )
+```
+
+```{r}
+#| eval: false
+#| echo: true
+
+#Aplicacion del modelo con un nuevo cliente
+nuevo_cliente = data.frame(
+  edad = 30,
+  ingreso_mensual = 22000,
+  frecuencia_compra = 6,
+  monto_promedio_compra = 950,
+  dias_ultima_compra = 3
+)
+
+media_original = attr(clientes_scaled, "scaled:center")
+sd_original = attr(clientes_scaled, "scaled:scale")
+
+nuevo_cliente_scaled = scale(nuevo_cliente,
+                             center = media_original,
+                             scale = sd_original)
+
+distancias = apply(modelo_kmeans$centers, 1,
+                   function(centroide) {
+                     sum((nuevo_cliente_scaled - centroide)^2)
+                   })
+
+cluster_predicho = which.min(distancias)
+cluster_predicho
+```
+
+## En Python
+
+```{r}
+#| eval: false
+#| echo: true
+
+# línea para instancia de python según el caso particular
+source("R/reticulate_setup.R")
+```
+
+```{python}
+#| eval: false
+#| echo: true
+
+# carga de librerias
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
+```
+
+```{python}
+#| eval: false
+#| echo: true
+
+# carga de datos
+data = pd.read_csv("clientes_segmentacion.csv")
+print(data.info())
+```
+
+
+```{python}
+#| eval: false
+#| echo: true
+
+# Separación de datos númericos y obtención de estadísticos
+numericas = data.select_dtypes(include='number')
+print(numericas.describe())
+```
+
+```{python}
+#| eval: false
+#| echo: true
+
+# obtención de medidas de tendencia central
+estadisticos_df = pd.DataFrame({
+    "Variable": numericas.columns,
+    "Media": numericas.mean().values,
+    "SD": numericas.std().values,
+    "Var": numericas.var().values,
+    "Min": numericas.min().values,
+    "Max": numericas.max().values
+})
+print(estadisticos_df)
+```
+
+```{python}
+#| eval: false
+#| echo: true
+
+# gráfica de caja para buscar outliers
+plt.clf()
+plt.boxplot(data["monto_promedio_compra"])
+plt.title("Boxplot de Monto Promedio de Compra")
+plt.ylabel("Monto promedio de compra")
+plt.show()
+```
+
+```{python}
+#| eval: false
+#| echo: true
+
+plt.clf()
+plt.boxplot(data["ingreso_mensual"])
+plt.title("Boxplot de Ingreso Mensual")
+plt.ylabel("Ingreso mensual")
+plt.show()
+```
+
+```{python}
+#| eval: false
+#| echo: true
+
+# busqueda de NA
+print(data.isna().sum().sum())
+```
+
+```{python}
+#| eval: false
+#| echo: true
+
+# Escala de variables
+features = ['edad','ingreso_mensual','frecuencia_compra', 'monto_promedio_compra', 'dias_ultima_compra']
+scaler = StandardScaler()
+clientes_scaled = scaler.fit_transform(data[features])
+```
+
+```{python}
+#| eval: false
+#| echo: true
+
+#Metodo del codo python
+wcss = []
+for k in range(1,11):
+  kmeans = KMeans(n_clusters= k, n_init = 10, random_state=123)
+  kmeans.fit(clientes_scaled)
+  wcss.append(kmeans.inertia_)
+  
+  
+plt.clf()
+plt.plot(range(1,11), wcss, marker='o')
+plt.title('Metodo del codo')
+plt.xlabel('Numero de clusters')
+plt.ylabel('wcss')
+plt.show()
+```
+
+
+```{python}
+#| eval: false
+#| echo: true
+
+#Ajuste de modelo y join con el data original
+kmeans = KMeans(n_clusters= 4, n_init = 25, random_state=123)
+data ['Cluster'] = kmeans.fit_predict(clientes_scaled)
+```
+
+```{python}
+#| eval: false
+#| echo: true
+
+#revisión de características númericas por cluster
+resumen = data.groupby('Cluster')[features].mean()
+resumen['Cantidad'] = data.groupby('Cluster').size()
+print(resumen)
+```
+
+```{python}
+#| eval: false
+#| echo: true
+
+#Uso de modelo para nuevo cliente
+nuevo_cliente = pd.DataFrame({
+  'edad' : [30],
+  'ingreso_mensual' : [22000],
+  'frecuencia_compra' : [6],
+  'monto_promedio_compra' : [950],
+  'dias_ultima_compra' : [3]
+})
+
+nuevo_cliente_scaled = scaler.transform(nuevo_cliente)
+distancias = np.linalg.norm(kmeans.cluster_centers_- nuevo_cliente_scaled, axis=1)
+cluster_predicho = np.argmin(distancias)
+cluster_predicho
+distancias
+```

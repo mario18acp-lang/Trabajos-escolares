@@ -1,0 +1,589 @@
+---
+title: "Modelado Predictivo con Regresión Logística — Caso Titanic"
+subtitle: "Autores: Jose Alberto Arismendi Faraco
+- Axel Rosas Reyes
+- Oscar Gutierrez
+- Javier Jimeno Martinez
+- Karla Ortiz
+- Mario Alberto Cruz Peña
+- Karen Michell Zetina Leon"
+lang: es
+format: 
+  html:
+    theme: darkly
+    toc: true
+    toc-location: right
+    toc-expand: 1
+    code-fold: true
+    page-layout: full
+    css: mystyle4.css
+  pdf:
+    pdf-engine: xelatex
+    mainfont: "Garamond"
+    monofont: "Consolas"
+    fontsize: 12pt
+    code-block-font-size: 7pt
+    geometry: margin=2.0cm
+    include-in-header:
+      text: |
+        \KOMAoptions{headings=small}
+        \usepackage{fvextra}
+        \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,commandchars=\\\{\}}
+engine: knitr
+execute:
+  echo: true
+  warning: false
+  message: false
+embed-resources: true
+---
+
+# 1. Introducción
+
+El 15 de abril de 1912 el S.S. Titanic se hundió en el Océano Atlántico lo que ocasionó la pérdida de 1517 vidas. En la búsqueda de la explicación de las causas, variables relativas a la operación técnica y de carácter social fueron consideradas. Estudios como _Social class and survival on the S.S Titanic_^1^ muestran cómo la clase social a la que pertenecía el pasajero influyó en la probabilidad de sobrevivir.
+
+Detrás de cada dato en la estadística hubo pérdidas humanas que no necesariamente provocaron cambios que mitigaran las desigualdades sociales, por lo que el ejercicio matemático adquiere otro matiz si apunta a una reflexión social.
+
+La regresión logística es adecuada para modelar la probabilidad de la ocurrencia de un evento -en este caso "Sobrevivió" o "No sobrevivió"- que depende de variables explicativas: edad, sexo, clase, etc. Se busca no solo ajustar un modelo, sino también interpretar sus resultados y evaluar su desempeño mediante diversas métricas relevantes para problemas de clasificación.
+
+# 2. Acceso al conjunto de datos
+
+En R se puede acceder a datasets relacionados a través del paquete y librería "titanic" y de un fragmento del dataset usando "titanic_train".
+
+\
+\
+\
+\
+\
+\
+
+\[1\] W. Hall. *Social class and survival on the S.S Titanic*, en línea, disponible en <https://www.academia.edu/2868627/Social_class_and_survival_on_the_SS_Titanic>, consultado el 02-02-2026.
+
+# 3. Objetivo del proyecto
+
+El objetivo general es construir un modelo de regresión logística binaria que permita estimar la probabilidad de que un pasajero haya sobrevivido al naufragio del Titanic, en función de algunas de sus características. Una vez estimado el modelo, se deberá evaluar su rendimiento y capacidad predictiva utilizando métricas propias del análisis de clasificación.
+
+# 4 Actividades
+
+```{r}
+#| eval: true
+#| echo: false
+# Carga de librerias
+library(caret)
+library(pROC)
+library(dplyr)
+library(ggplot2)
+library(titanic)
+
+#Carga de datos
+data("titanic_train")
+df = titanic_train
+```
+
+## a) Preparación de los datos
+
+Una vez cargado los datos podemos observar las siguientes variables en el dataset "titanic_train". Para este ejercicio se ha decidido seleccionar a Survived como la variable objetivo y a Pclass,Sex, Age y Parch como variables explicativas
+
+| Variable    | Tipo de variable   | Descripción                                                         |
+|-------------|--------------------|---------------------------------------------------------------------|
+| PassengerId | Numérica           | Identificador único asignado a cada pasajero.                       |
+| Survived    | Categórica binaria | Indica si el pasajero sobrevivió (1) o no (0).                      |
+| Pclass      | Categórica ordinal | Clase del boleto: 1ª, 2ª o 3ª clase.                                |
+| Name        | Categórica nominal | Nombre completo del pasajero, incluyendo títulos.                   |
+| Sex         | Categórica nominal | Sexo del pasajero (masculino/femenino).                             |
+| Age         | Numérica continua  | Edad del pasajero en años.                                          |
+| SibSp       | Numérica discreta  | Número de hermanos o cónyuges que viajaban con el pasajero.         |
+| Parch       | Numérica discreta  | Número de padres o hijos que viajaban con el pasajero.              |
+| Ticket      | Categórica nominal | Número o código del boleto.                                         |
+| Fare        | Numérica continua  | Tarifa pagada por el boleto.                                        |
+| Cabin       | Categórica nominal | Número de cabina asignada.                                          |
+| Embarked    | Categórica nominal | Puerto de embarque: C = Cherbourg, Q = Queenstown, S = Southampton. |
+
+```{r}
+#| eval: false
+#| echo: false
+#Analisis de la tabla con las variables seleccionadas
+summary(df, digits = 1)
+```
+
+Al explorar la tabla podemos observar algunos puntos interesantes
+
+-   Viajaban bebes pero principalmente personas jóvenes entre 20 y 38 años.
+-   El 50% de los pasajeros viajaban en 3ra clase.
+-   La mayoría de los pasajeros viajaban solos.
+-   Había más hombres que mujeres.
+-   Age tiene **177** datos faltantes, atribuibles a la dificultad del registro.
+
+Este último punto es muy relevante pues representa el 20% de los registros. Se ha determinado suprimir estos registros para no sesgar el análisis, especialmente cuando se quiere comprobar si la premisa de "mujeres y niños primeros" se cumple.
+
+\pagebreak
+
+En un ejercicio posterior vale la pena ejecutar una estrategia del cómo manejar estos faltante, por ejemplo completando con la mediana.
+
+| Estadístico | Age     | Pclass | Parch | Sex         | Embarked |
+|-------------|---------|--------|-------|-------------|----------|
+| Min         | 0.4     | 1      | 0     | female: 314 | C: 168   |
+| 1st Qu.     | 20.1    | 2      | 0     | male: 577   | Q: 77    |
+| Median      | 28.0    | 3      | 0     |             | S: 644   |
+| Mean        | 29.7    | 2      | 0.4   |             |          |
+| 3rd Qu.     | 38.0    | 3      | 0     |             |          |
+| Max         | 80.0    | 3      | 6     |             |          |
+| NA’s        | **177** |        |       |             |          |
+
+Despues de eliminar los registros que no tengan edad y que no tengan embarque se decidió dejar el manejo de las variables categoricas a la función gml().
+
+Se seleccionó el 80% de los datos para el entrenamiento, reservando el 20% para prueba.
+
+```{r}
+#| eval: true
+#| echo: false
+#Eliminar faltantes  "NA" 
+df = df %>%
+  filter(!is.na(Age), !is.na(Embarked))
+#Colocar una semilla para repartir los datos de entrenamiento y los de prueba 
+set.seed(123)
+```
+
+```{r}
+#| eval: true
+#| echo: true
+#Separación de datos de entrenamiento
+index = createDataPartition(df[["Survived"]], p = 0.8, list = FALSE)
+train = df[index, ]
+test  = df[-index, ]
+```
+
+## b) Estimación del modelo
+
+Se ajustó un modelo de regresión logística para estimar la probabilidad de supervivencia 
+
+```{r}
+#| eval: true
+#| echo: true
+#Correr modelo
+modelo = glm(Survived ~ as.factor(Pclass) + Sex + Age + Parch, data = train, family = 'binomial')
+```
+
+```{r}
+#| eval: false
+#| echo: false
+summary(modelo)
+```
+
+
+| Variable              | Estimate | Std. Error | z value | Pr(>|z|)   | Signif. |
+|-----------------------|----------|------------|---------|------------|---------|
+| (Intercept)           | 3.614    | 0.451      | 8.008   | 1.17e-15   | ***     |
+| Pclass = 2            | -1.220   | 0.311      | -3.925  | 8.69e-05   | ***     |
+| Pclass = 3            | -2.402   | 0.303      | -7.925  | 2.29e-15   | ***     |
+| Sex = male            | -2.518   | 0.234      | -10.746 | < 2e-16    | ***     |
+| Age                   | -0.034   | 0.008      | -4.082  | 4.47e-05   | ***     |
+| Parch                 | -0.155   | 0.123      | -1.269  | 0.205      |         |
+```
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+\pagebreak
+
+```{r}
+#| eval: false
+#| echo: false
+#Aqui ya los elevamos a la exponencial
+odds = exp(coef(modelo))
+odds
+```
+
+Al obtener los odd ratios podemos ir destacando los resultados
+
+| Variable              | Odds Ratio |
+|-----------------------|------------|
+| (Intercept)           | 37.096     |
+| Pclass = 2            | 0.295      |
+| Pclass = 3            | 0.091      |
+| Sex = male            | 0.081      |
+| Age                   | 0.966      |
+| Parch                 | 0.856      |
+
+
+
+Intercept: 37.09 - - En las categorías de referencia (mujer, primera clase, edad "cero" y viajando sola), las odds de sobrevivir son 37 veces mayores que las odds de no sobrevivir. 
+
+Variables Numericas: (incremento o decrecimiento porcentual)
+
+Age:  0.96 - 1 = -.04 - Por cada año de vida la probabilidad de que sobreviva disminuye en un 4%.\
+Parch: .85 - 1 = -.15 - Por cada pariente que tienes a bordo la probabilidad de que sobrevivas disminuye en 15%.\ Ahora es importante destacar que su valor p lo hace estadisticamente poco significativo.
+
+
+Variables Categoricas: (veces de probabilidad)
+
+as.factor(Pclass)2: 0.29 veces de probabilidad de que si estas en segunda clase sobrevivas.\
+as.factor(Pclass)3: 0.09 veces de probabilidad de que si estas en tercera clase sobrevivas.\
+Sexmale: 0.080 veces de probabilidad de que el sexo masculino sobreviva   1: Mujer     0: Hombre.
+
+## Gráficas de la relación que hay entre las diferentes variables 
+
+```{r}
+#| eval: true
+#| echo: false
+# Gráficas de relación entre la supervivencia y las variables explicativas
+ggplot(df, aes(x = Age, y = Survived)) +
+  geom_jitter(aes(color = factor(Survived)),
+              height = 0.05, alpha = 0.5) +
+  scale_y_continuous(breaks = c(0, 1),
+                     labels = c("No sobrevivió", "Sobrevivió")) +
+  labs(
+    x = "Edad",
+    y = "Estado de supervivencia",
+    color = "Supervivió",
+    title = "Relación entre la edad y la supervivencia en el Titanic"
+  ) +
+  theme_minimal()
+
+ggplot(df, aes(x = factor(Pclass), y = Survived)) +
+  geom_jitter(aes(color = factor(Survived)),
+              width = 0.15, height = 0.05, alpha = 0.5) +
+  scale_y_continuous(breaks = c(0, 1),
+                     labels = c("No sobrevivió", "Sobrevivió")) +
+  labs(
+    x = "Clase del pasajero (Pclass)",
+    y = "Estado de supervivencia",
+    color = "Supervivió",
+    title = "Relación entre la clase del pasajero y la supervivencia"
+  ) +
+  theme_minimal()
+
+ggplot(df, aes(x = Sex, y = Survived)) +
+  geom_jitter(aes(color = factor(Survived)),
+              width = 0.15, height = 0.05, alpha = 0.5) +
+  scale_y_continuous(
+    breaks = c(0, 1),
+    labels = c("No sobrevivió", "Sobrevivió")
+  ) +
+  labs(
+    x = "Género",
+    y = "Estado de supervivencia",
+    color = "Supervivió",
+    title = "Relación entre género y supervivencia en el Titanic"
+  ) +
+  theme_minimal()
+```
+\pagebreak
+
+## c) Evaluación del modelo
+
+El modelo fue evaluado con un umbral del 0.5 y posteriormente se construyo la matriz de confusión de la cual se obtuvieron los siguientes resultados
+```{r}
+#| eval: true
+#| echo: true
+
+#Obtener la predición utilizando el umbral 0.5
+pred_prob = predict(modelo, newdata = test, type = "response")
+pred_clase = ifelse(pred_prob >= 0.5, 1, 0)
+
+#Confusion Matrix
+conf_matrix = confusionMatrix(factor(pred_clase),factor(test$Survived),positive = "1")
+```
+
+```{r}
+#| eval: false
+#| echo: false
+# Extraer precisión y recall como valores numéricos
+precision = as.numeric(conf_matrix$byClass["Pos Pred Value"])
+recall= as.numeric(conf_matrix$byClass["Sensitivity"])
+
+# Calcular F1-score
+f1 = 2 * (precision * recall) / (precision + recall)
+print (f1)
+print(conf_matrix)
+```
+
+
+
+|                 |  0 |  1  |
+|-----------------|----|-----|
+| Predicción = 0  | 71 | 18  |
+| Predicción = 1  | 8  | 45  |
+
+Así como las métricas
+
+| Métrica                    | Valor   |
+|----------------------------|---------|
+| Accuracy                   | 0.816   |
+| Precision (Pos Pred Value) | 0.849   |
+| Recall (Sensitivity)       | 0.714   |
+| Specificity                | 0.898   |
+| F1-score (calculada)       | 0.775   |
+
+El modelo predice mejor los que no sobrevivieron y regularmente bien a los que si sobrevivieron.
+Más adelante se puede poner a prueba otros umbrales, para ver si F1-score mejora
+\pagebreak
+
+Al graficar la curva ROC puede apreciarse que la curva esta por encima de la línea de no discrimianción, lo que significa que el modelo tiene poder discriminatorio y es mejor que el azar. Esto se ratifica con el valor del área bajo la curva que es de 0.8819
+
+```{r}
+#| eval: true
+#| echo: false
+# Curva ROC:
+roc_obj = roc(test$Survived, pred_prob)
+plot(roc_obj, col = "blue", main = "Curva ROC - Modelo Logistico")
+```
+
+```{r}
+#| eval: false
+#| echo: false
+# AUC:
+auc_value = auc(roc_obj)
+print(auc_value)
+```
+
+Al iterar en 100 escenarios se busca  un mejor F1-score y por lo tanto un umbral óptimo. En el anexo del código puede verse como para cada iteración se evalúa cada escenario y los resultados se van acumulando. Al final de la iteración se elije el F1-score más alto y se recuperan los valores del umbral. Este se encuentra en 0.3, lo que mejora el F1-Score a  0.827.
+
+```{r}
+#| eval: true
+#| echo: false
+
+# Umbral para definir la optimizacion
+# probabilidades sobre el set de test
+y_prob = predict(modelo, newdata = test,   type = "response")
+
+#Definir la variable original
+survived = test$Survived
+
+
+#Secuencia de 100 pruebas
+thresholds = seq(0, 1, length.out = 100)
+precisions = vector()
+recalls = vector()
+f1_score = vector()
+
+#Iterar los 100 escenarios
+for (threshold in thresholds) {
+  
+  y_pred = ifelse(y_prob < threshold, 0, 1)
+  
+  precision = sum(y_pred[survived == 1] == 1) / sum(y_pred == 1)
+  recall    = sum(y_pred[survived == 1] == 1) / sum(survived == 1)
+  f1        = 2 * (precision * recall) / (precision + recall)
+  
+# Concatenar los resultados de cada escenario
+    precisions = c(precisions, precision)
+  recalls    = c(recalls, recall)
+  f1_score   = c(f1_score, f1)
+}
+```
+
+```{r}
+#| eval: true
+#| echo: true
+#Seleccionar los mejores valores
+max_f1_score = which.max(f1_score)
+optimal_threshold = thresholds[max_f1_score]
+max_f1_score = f1_score[max_f1_score]
+sprintf("umbral: %.3f   F1-score: %.3f", optimal_threshold, max_f1_score)
+```
+## d) Análisis crítico
+
+El modelo muestra métricas aceptables y consistentes, así como un poder discriminatorio alto.
+
+| Métrica                    | Valor   |
+|----------------------------|---------|
+| Accuracy                   | 0.816   |
+| Precision (Pos Pred Value) | 0.849   |
+| Recall (Sensitivity)       | 0.714   |
+| Specificity                | 0.898   |
+| F1-score (calculada)       | 0.775   |
+| AUC                        | 0.881   |
+
+
+Sin embargo el modelo predice mejor los que no sobrevivieron y regularmente bien a los que si sobrevivieron.\
+Al realizar iteraciones se puede encontrar umbrales óptimos que mejoran el F1-score, por lo que aquí hay oportunidades de verificar si predice mejor.\
+Sobre las variables, el tratamiento de los valores faltantes es crítico ya que la edad tiene un impacto negativo pero es necesario verificar como se comporta el modelo cuando no se suprimen estos valores.\
+Como se puede ratificar en las gráficas, el sexo y la clase de viaje influyen demasiado en la superviviencia.\
+Sobre el hecho de que Parch no es estadísticamente significativo, quizás valga la pena explorar como se comporta el modelo si se crea una nueva variable acompaniantes = Sibsp + Parch.\
+Otra variable que también valdría la pena incluir, sería a la tripulación, pues no queda claro en donde queda esta en el dataset.
+
+# 5. Conclusiones
+A través de este ejercicio, se demostró que el modelo de regresión logística es una herramienta apta que nos permite visualizar problemas de clasificación binaria, a través de las variables categóricas, que si bien no predicen directamente, sí estima una probabilidad considerable en relación a la continuidad del evento que en este caso era la probabilidad de que un pasajero haya sobrevivido al naufragio del Titanic.
+
+Al utilizar un modelo de regresión logística, y  tener un nivel de desempeño satisfactorio nos percatamos que existen limitantes que identificamos durante el desarrollo de este, por ejemplo, crear más variables para indagar más en cada una de las variables categóricas que ya están predeterminadas en el DataSet,para que estas puedan aumentar se capacidad discriminatoria y tener un mayor nivel de predicción, también podemos identificar que se pudiesen realizar más pruebas sobre ese 20% a través de una imputación con la mediana, más adecuadamente, con una prueba de Kolmogórov-Smirnov para ver si la distribución no se altera.
+
+
+# Anexo
+
+```{r}
+#| eval: false
+#| echo: true
+# Carga de librerias
+library(caret)
+library(pROC)
+library(dplyr)
+library(ggplot2)
+library(titanic)
+
+#Carga de datos
+data("titanic_train")
+df = titanic_train
+print(as.data.frame(head(df)))
+```
+
+```{r}
+#| eval: false
+#| echo: true
+#Analisis de la tabla con las variables seleccionadas
+summary(df, digits = 1)
+```
+
+```{r}
+#| eval: false
+#| echo: true
+#Eliminar faltantes  "NA" 
+df = df %>%
+  filter(!is.na(Age), !is.na(Embarked))
+
+#Colocar una semilla para repartir los datos de entrenamiento y los de prueba 
+set.seed(123)
+
+#Separación de datos de entranamiento
+index = createDataPartition(df[["Survived"]], p = 0.8, list = FALSE)
+train = df[index, ]
+test  = df[-index, ]
+
+#Correr modelo
+modelo = glm(Survived ~ as.factor(Pclass) + Sex + Age + Parch, data = train, family = 'binomial')
+summary(modelo)
+```
+
+```{r}
+#| eval: false
+#| echo: true
+#Aqui ya los elevamos a la exponencial
+odds = exp(coef(modelo))
+odds
+```
+
+```{r}
+#| eval: false
+#| echo: true
+# Gráficas de relación entre la supervivencia y las variables explicativas
+ggplot(df, aes(x = Age, y = Survived)) +
+  geom_jitter(aes(color = factor(Survived)),
+              height = 0.05, alpha = 0.5) +
+  scale_y_continuous(breaks = c(0, 1),
+                     labels = c("No sobrevivió", "Sobrevivió")) +
+  labs(
+    x = "Edad",
+    y = "Estado de supervivencia",
+    color = "Supervivió",
+    title = "Relación entre la edad y la supervivencia en el Titanic"
+  ) +
+  theme_minimal()
+
+ggplot(df, aes(x = factor(Pclass), y = Survived)) +
+  geom_jitter(aes(color = factor(Survived)),
+              width = 0.15, height = 0.05, alpha = 0.5) +
+  scale_y_continuous(breaks = c(0, 1),
+                     labels = c("No sobrevivió", "Sobrevivió")) +
+  labs(
+    x = "Clase del pasajero (Pclass)",
+    y = "Estado de supervivencia",
+    color = "Supervivió",
+    title = "Relación entre la clase del pasajero y la supervivencia"
+  ) +
+  theme_minimal()
+
+ggplot(df, aes(x = Sex, y = Survived)) +
+  geom_jitter(aes(color = factor(Survived)),
+              width = 0.15, height = 0.05, alpha = 0.5) +
+  scale_y_continuous(
+    breaks = c(0, 1),
+    labels = c("No sobrevivió", "Sobrevivió")
+  ) +
+  labs(
+    x = "Género",
+    y = "Estado de supervivencia",
+    color = "Supervivió",
+    title = "Relación entre género y supervivencia en el Titanic"
+  ) +
+  theme_minimal()
+```
+
+
+
+```{r}
+#| eval: false
+#| echo: true
+
+#Obtener la predición utilizando el umbral 0.5
+pred_prob = predict(modelo, newdata = test, type = "response")
+pred_clase = ifelse(pred_prob >= 0.5, 1, 0)
+
+#Confusion Matrix
+conf_matrix = confusionMatrix(
+  factor(pred_clase),
+  factor(test$Survived),
+  positive = "1"
+)
+
+# Extraer precisión y recall como valores numéricos
+precision = as.numeric(conf_matrix$byClass["Pos Pred Value"])
+recall= as.numeric(conf_matrix$byClass["Sensitivity"])
+
+# Calcular F1-score
+f1 = 2 * (precision * recall) / (precision + recall)
+print (f1)
+print(conf_matrix)
+```
+
+```{r}
+#| eval: false
+#| echo: true
+#| fig.width: 6
+#| fig.height: 3
+# Curva ROC:
+roc_obj = roc(test$Survived, pred_prob)
+
+# AUC:
+auc_value = auc(roc_obj)
+
+plot(roc_obj, col = "blue", main = "Curva ROC - Modelo Logistico")
+print(auc_value)
+```
+
+```{r}
+#| eval: false
+#| echo: true
+
+# Umbral para definir la optimizacion
+# probabilidades sobre el set de test
+y_prob = predict(modelo, newdata = test,   type = "response")
+
+#Definir la variable original
+survived = test$Survived
+
+
+#Secuencia de 100 pruebas
+thresholds = seq(0, 1, length.out = 100)
+precisions = vector()
+recalls = vector()
+f1_score = vector()
+
+#Iterar los 100 escenarios
+for (threshold in thresholds) {
+  
+  y_pred = ifelse(y_prob < threshold, 0, 1)
+  
+  precision = sum(y_pred[survived == 1] == 1) / sum(y_pred == 1)
+  recall    = sum(y_pred[survived == 1] == 1) / sum(survived == 1)
+  f1        = 2 * (precision * recall) / (precision + recall)
+  
+# Concatenar los resultados de cada escenario
+    precisions = c(precisions, precision)
+  recalls    = c(recalls, recall)
+  f1_score   = c(f1_score, f1)
+}
+
+#Seleccionar los mejores valores
+max_f1_score = which.max(f1_score)
+optimal_threshold = thresholds[max_f1_score]
+max_f1_score = f1_score[max_f1_score]
+sprintf("umbral: %.3f   F1-score: %.3f", optimal_threshold, max_f1_score)
+```
+

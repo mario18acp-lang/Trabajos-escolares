@@ -1,0 +1,600 @@
+# Objetivo general
+Aplicar los conocimientos de regresión lineal múltiple para modelar, analizar y predecir el precio mensual de renta de departamentos a partir de un conjunto de variables explicativas relacionadas con las características físicas del inmueble y su ubicación.
+
+# Base de datos
+Se trabajará con una base de datos llamada base_renta_departamentos.csv que contiene información de 1000 departamentos, con las siguientes variables:
+
+
+| Variable        | Tipo       | Descripción                                                     |
+|-----------------|------------|-----------------------------------------------------------------|
+| renta_mensual   | Numérica   | Precio mensual de renta del departamento (variable dependiente) |
+| metros_cuadrados| Numérica   | Tamaño del departamento en metros cuadrados                     |
+| antiguedad      | Numérica   | Años desde su construcción                                      |
+| num_recamaras   | Entero     | Número de recámaras                                             |
+| zona            | Categórica | Ubicación del departamento: "Centrica" o "Periferica"           |
+
+# Codificación
+El trabajo esta dividivo en dos secciones: a) R y b) Python.
+\pagebreak
+
+# 1a. Exploración de los datos en R
+
+## Revisar la estructura y distribución de las variables.
+
+### Importamos librerias y la base de datos CSV
+
+```{r}
+library(tseries)
+library(lmtest)
+library(ggplot2)
+library(forecast)
+library(caret)
+
+#exportamos la base a un dataframe con la funcion read.csv
+data = read.csv("base_renta_departamentos.csv")
+print(as.data.frame(head(data)))
+```
+
+### Analizamos los datos para encontrar anormalidades
+
+```{r}
+#funcion summary para obtener el resumen estadistico de data a dos digitos
+summary(data, digits = 2)
+```
+Encontramos que la renta mensual contenia valores negativos, lo cual es atipico. Por ende decidimos transformar los valores negativos en positivos, asumiendo que fue un error de captura. Nota: En su momento cuando repliquemos en Python suprimiremos estos valores y veremos como cambia
+\pagebreak
+
+### Ahora tenemos valores positivos
+
+```{r}
+#simbolo $ para especificar la columna del data frame y funcion abs para obtener el valor absoluto
+data$renta_mensual <- abs(data$renta_mensual)
+summary(data, digits = 2)
+```
+## Detectar valores atípicos o inconsistencias si las hubiera.
+
+### Gráficamos las variables
+
+
+```{r}
+#| fig.width: 4
+#| fig.height: 4
+#funcion boxplot para grafico de caja con elementos del gráfico
+boxplot(data$renta_mensual, main = "Distribución de la Renta Mensual", outcol = "red", 
+        cex.main = 0.8, cex.axis = 0.8, las = 1)
+```
+\pagebreak
+
+```{r}
+#| fig.width: 3.75
+#| fig.height: 3.75
+boxplot(data$metros_cuadrados, main = "Distribución de los metros cuadrados", outcol = "red",
+        cex.main = 0.8, cex.axis = 0.8, las = 1)
+boxplot(data$antiguedad,  main = "Distribución de la antiguedad", outcol = "red",
+        cex.main = 0.8, cex.axis = 0.8, las = 1)
+boxplot(data$num_recamaras, main = "Distribución del numero de cuartos", outcol = "red",
+        cex.main = 0.8, cex.axis = 0.8, las = 1)
+```
+
+Se observan outliers en renta_mensual, por lo que creamos una columna adicional dividiendo la renta mensual entre los metros cuadrados para observar con mayor facilidad si se trata de un dato atipico o no.
+
+```{r}
+data$precio_metro= data$renta_mensual/data$metros_cuadrados 
+```
+
+### Graficamos la nueva variable para observar su comportamiento
+
+```{r}
+#| fig.width: 4
+#| fig.height: 4
+boxplot(data$precio_metro,  main = "Distribución del precio por metro cuadrado",outcol = "red",
+        cex.main = 0.8, cex.axis = 0.8, las = 1)
+```
+
+En la gráfica se aprecian 10 valores que sobrepasan los extremos de la gráfica, pero decidimos mantenerlos para tener la referencia de que el precio de renta en la zona centrica es mayor que en la periferia.
+
+### Graficamos la relación entre metros cuadrados y renta mensual
+
+```{r}
+#| fig.width: 8
+#| fig.height: 4
+#usamos la funcion ggplot de la libreria (tidyverse) para crear una grafica de puntos con geom_point, aes define que variables se mapean, labs para añadir o modificar etiquetas, theme para controlar elementos de formato
+ggplot(data = data, aes(x =metros_cuadrados, y = renta_mensual)) + geom_point() +
+  labs(title = "Relación entre Metros Cuadrados y Renta Mensual", 
+       x = "Superficie (m²)",y = "Renta Mensual") + 
+  theme_minimal(base_size = 10) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+    panel.grid.minor = element_blank())
+```
+
+### Analisis de valores faltantes
+
+```{r}
+#| results: hide
+# funcion witch para filtar los datos(is.na), ayuda a saber exactamente en qué filas falta el dato de renta, metros, antiguaedad, etc
+which(is.na(data$renta_mensual))
+which(is.na(data$metros_cuadrados))
+which(is.na(data$antiguedad))
+which(is.na(data$num_recamaras))
+which(is.na(data$zona))
+```
+Se puede apreciar que no existen faltantes en las variables al obtener **integer(0)**
+
+# 2a. Ajuste del modelo
+
+## Estimar un modelo de regresión lineal múltiple donde la variable dependiente sea renta_mensual.
+
+### Separamos base de entrenamiento y base de prueba por si fuera necesario probar el modelos:
+
+```{r}
+#establece una semilla inicial para el generador de números pseudoaleatorios
+set.seed(123)
+#usamos la funcion createDataPartition de la libreria caret para particionar un marco de datos en conjuntos de entrenamiento y prueba para la construcción del modelo con un porcentaje de datos a utilizar de 0.8
+trainindex = createDataPartition(data[['renta_mensual']], p=0.8, list=FALSE)
+train = data[trainindex, ]
+test = data[-trainindex, ]
+```
+
+Se crea el modelo con todas las variables disponibles
+
+```{r}
+modelo = lm(renta_mensual ~ metros_cuadrados + antiguedad + num_recamaras + zona, data = train)
+#funcion lm(formula, data)
+summary(modelo)
+```
+
+## Justificar la inclusión de cada variable explicativa.
+
+Aqui se puede observar que el valor del intercepto es de 4188.562, lo que nos indica el precio promedio de una propiedad en la zona centrica, independientemente de los metros cuadrados, la antiguedad y el numero de recamaras, es de 4188.562 pesos.
+
+También se puede concluir que por cada metro cuadrado el valor de la propiedad aumenta 76.071 pesos, por cada año disminuye el valor 145.943 pesos, el cada recamara aumenta el valor 1073.503 pesos y por ubicarse en zona periferica se diminuye el valor de la propiedad 2272.309 pesos.
+
+Además las variables son significativas ya que el p-value de todas nuestras variables es menor que 0.05, lo que nos demuestra que todas las variables afectan significativamente a nuestro valor objetivo.
+
+## Interpreta los resultados de los coeficientes de cada una de las variables.
+
+En conclusión, la variable metros cuadrados nos muestra que entre mas metros cuadrados sean el valor de la renta aumenta. La variable antigüedad impacta en la renta mientras mas antigua sea el precio disminuye ,aunque , algunos datos muestran lo contario respecto al valor antiguo. La variable de recamaras entre mas sean aumenta el costo. La variable zona periférica nos muestra que en la zona céntrica es mas caro.
+
+# 3a. Pruebas de diagnostico
+
+### Inspección visual en la grafica de residuos
+
+```{r}
+#| fig.width: 6
+#| fig.height: 3
+# la funcion residuals extrae los residuos (diferencias entre valores observados y ajustados) de un modelo de regresión
+residuos = residuals(modelo)
+#graficamos residuos con plot y se agrega una linea horizontal en 0
+plot(residuos, type = 'l', main = 'Gráfico de Residuos', col = "gray",
+     lwd = 1.0, cex.main = 1.1, cex.axis = 0.8,  
+     panel.first = grid(), las=1)
+abline(h = 0, col = "red", lty = 2, lwd = 2) 
+```
+
+En la gráfica se aprecia que los residuos no tienen un comportamiento atipico, por lo que su comportamiento es constante.
+
+## Verificar los supuestos del modelo con pruebas estadísticas
+
+### Prueba de Jarque-Bera
+
+La prueba Jarque-Bera obtuvo un p-value de 0.9822, lo cual es mucho mayor que 0.05, por lo que los residuos tienen un sesgo cercano a cero y una kurtosis cercana a 3, indicando una distribución normal de estos.
+
+```{r}
+jb_test= jarque.bera.test(residuos)
+jb_test
+```
+
+### Prueba Breusch-pagan
+
+En la prueba Breusch-pagan se obtuvo un p-value de 0.06357, lo que es mayor a 0.05, lo que demuestra que existe homocedasticidad y por lo tanto, la varianza de los residuos es constante.
+
+```{r}
+#Homoscedasticidad - Breuch-Pagan:
+
+bp_test= bptest(modelo)
+bp_test
+```
+
+### Prueba de Durbin-Watson
+
+Por ultimo tenemos la prueba de Durbin-Watson, resultando en un 2.155, lo cual se considera cercano al 2, lo que nos dice que no existe autocorrelación alguna. Esto también lo pudimos comprobar con el correlograma, en el cual no se nota una linea que sobrepase los limites tan significativamente.
+
+```{r}
+# Autocorrelacion de orden 1: Durbin-Watson
+dw_test=dwtest(modelo)
+dw_test
+```
+\pagebreak
+```{r}
+#Autocorrelacion de orden mayor: correlograma:
+acf(residuos,las=1)
+```
+
+## Confiabilidad del modelo con los datos "test"
+
+Al poner a prueba el modelo, obtenemos un error promedio del 27%
+
+```{r}
+#funcion predict para predecir los valores 
+pred_test = predict(modelo, newdata = test)
+comparacion = data.frame(
+  Real = test$renta_mensual,
+  Prediccion = pred_test, 
+  Error = abs((test$renta_mensual-pred_test)/pred_test)*100
+)
+#calculamos el promedio con funcion mean
+mean(comparacion$Error)
+```
+\pagebreak
+
+# 4a. Predicciones
+
+## Realizar predicciones para al menos 5 nuevos departamentos hipotéticos, mostrando la renta estimada y el intervalo de confianza
+
+Para hacer la propuesta observamos nuevamente un resumen de los datos
+
+```{r}
+summary(data[, 1:5], digits = 2)
+```
+
+### Se definen los casos hipoteticos tomando como referencia la distribución por cuartiles
+
+| Caso | metros_cuadrados | antiguedad | num_recamaras | zona       |
+|------|------------------|------------|---------------|------------|
+| 1    | 95               | 3          | 3             | Céntrica   |
+| 2    | 40               | 20         | 1             | Periférica |
+| 3    | 70               | 8          | 2             | Céntrica   |
+| 4    | 85               | 15         | 3             | Periférica |
+| 5    | 55               | 2          | 2             | Céntrica   |
+
+Cada uno de estos casos busca emular diferentes escenarios, siendo el 1 y 2 casos extremos y el resto combinaciones de las variables basados en los cuartiles mostrados arriba
+
+| Caso | Decripción                                                 |
+|------|------------------------------------------------------------|
+| 1    | Grande, con 3 habitaciones, nuevo, y céntrico              |
+| 2    | Pequeño, con 1 habitación, antiguo y en zona periférica    |
+| 3    | Mediano, con 2 recamaras, antiguo menor a la media y céntrico |
+| 4    | Grande, con 3 recamaras, antiguo y en zona periférica     |
+| 5    | Pequeño, con 2 recamaras, nuevo y en céntrico              |
+
+Creamos el data frame con las variables nuevas.
+
+```{r}
+metros_cuadrados = c(95, 40, 70, 85, 55)
+antiguedad = c(3, 20, 8, 15, 2)
+num_recamaras = c(3, 1, 2, 3, 2)
+zona = c("Centrica", "Periferica", "Centrica", "Periferica", "Centrica")
+datos_hipoteticos = data.frame(metros_cuadrados, antiguedad, num_recamaras, zona)
+print(as.data.frame(head(datos_hipoteticos)))
+```
+
+### Se realiza las predicciones y se muestra el lower y el upper
+
+```{r}
+predicciones=predict(modelo, newdata = datos_hipoteticos, interval = "confidence", level = 0.95)
+print(as.data.frame(head(predicciones)))
+```
+
+Usando nuevamente la información disponible se observa para los  casos 1 y 2 que son extremos, Renta muy alta  y renta muy baja
+
+
+| Caso | Renta estimada (fit) | IC 95% inferior (lwr) | IC 95% superior (upr) | Resultado                        |
+|------|----------------------|-----------------------|-----------------------|----------------------------------|
+| 1    | 14212.816            | 13632.284             | 14793.348             | Alta, por encima del Q3          |
+| 2    | 3078.340             | 2307.741              | 3848.939              | Baja, por abajo del Q1           |
+| 3    | 10486.086            | 10130.572             | 10841.599             | Media, muy cerca de la media     |
+| 4    | 9418.634             | 9010.093              | 9827.175              | Media, muy cerca de la media     |
+| 5    | 10213.433            | 9670.993              | 10755.873             | Media, muy cerca de la media     |
+
+El modelo ajustado parece capturar bastante bien la realidad e incluso podria decirse que teoricamente permitiria a un arrendador  calcular un precio de acuerdo al mercado, y a un arrendatario buscar un departamento acorde a sus necesidades de espacio, ubicación y presupuesto.
+
+
+# 5a. Evaluación del modelo
+
+## Interpretar los coeficientes y variables màs influyentes.
+
+renta_mensual = 4129.492 + 76.593 (metros_cuadrados) − 146.040 (antiguedad) + 1081.703 (num_recamaras) − 2275.767 (zonaPeriferica)
+
+
+La variable metros cuadrados nos muestra que entre mas metros cuadrados sean, el valor de la renta aumenta. La variable antigüedad impacta en la renta, mientras mas antigua sea el precio disminuye. La variable de recamaras  es una de las variables que màs impacta al crecer 1081 por cada recamara. La variable zonaPeriferica impacta disminuyendo bastante el precio respecto al centro
+
+## Evaluar el R² y ajustar su interpretación.
+
+Como se pudo observar el modelo explica el 30% del como varia la renta respecto a las variable incluidas.
+Significa que el 70% del como varia la renta, quizas se explicaria con otras variables y màs datos.
+Aun asi el modelo demostro aportar resultados consistentes con el dataset original
+
+# 1b. Exploración de Datos en Python
+
+```{r}
+# Se carga los elementos para ejecutar python en R: reticulate, una instancia de Python o un entorno virtual específico según sea el caso particular de cada usuario
+source("R/reticulate_setup.R")
+```
+
+## Importar librerias 
+
+```{python}
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+import statsmodels.api as sm
+from sklearn.model_selection import train_test_split  # Separacion de datos de prueba y entrenamiento
+from statsmodels.stats.stattools import jarque_bera
+from statsmodels.stats.diagnostic import het_breuschpagan
+from statsmodels.stats.stattools import durbin_watson
+from statsmodels.graphics.tsaplots import plot_acf
+
+```
+
+
+## Cargar la base de datos 
+
+```{python}
+#funcion pd.read_csv de biblioteca pandas para abrir el dataframe
+df = pd.read_csv("base_renta_departamentos.csv")
+df.head(3)
+```
+
+## Deteccion de valores nulos 
+
+```{python}
+#Detección de valores nulos y tipos de datos
+df.isnull().sum() #funcion isnull de pandas + sum 
+df.dtypes  #funcion dtypes para identificar los tipos de datos
+```
+
+La base no mostro valores nulos en ninguna de sus varibles
+
+
+## Analizar nuestra base de datos
+
+```{python}
+df.describe()  #funcion describe para resumen estadistico
+
+```
+
+Se decide eliminar los valores negativos al observar valores negativos que podrian afectar a la base completa:
+Basado en el criterio de la inexistencia de valores negativos para la renta_mensual 
+
+```{python}
+df1 = df[df['renta_mensual'] >= 0]
+
+```
+
+Se vuelve a analizar la base de datos con los valores eliminados por medio de un boxplot
+
+```{python}
+df1.describe()
+```
+## Boxplot por columna
+
+```{python}
+# Boxplot de la columna 'renta_mensual'
+#configuración de formato para outliers
+outliers = dict(markerfacecolor='red', marker='o', markeredgecolor='red')
+#Controla el tamaño de la fuente en los marcadores del eje y
+plt.rc('ytick', labelsize=7) 
+#funcion sns.boxplot de libreria seaborn se utiliza para visualizar la distribución de datos numéricos a través de sus cuartiles, mediana y valores atípicos
+sns.boxplot(data=df1, y='renta_mensual', color='lightgray', flierprops=outliers)
+plt.title("Boxplot de Renta Mensual") #plt.title para agregar titulo
+plt.ylabel("Renta Mensual") #plt.ylabel para agregar titulo a eje y
+plt.show() #mostramos la grafica con la funcion pltshow()
+```
+
+## Agregar la nueva columna 
+
+```{python}
+df1['renta_m2'] = df1['renta_mensual'] / df1['metros_cuadrados']
+
+```
+
+## Graficar otro boxplot
+
+```{python}
+plt.clf() # funcion para borrar las graficas del modulo
+outliers = dict(markerfacecolor='red', marker='o', markeredgecolor='red')
+plt.rc('ytick', labelsize=7)
+sns.boxplot(y=df1['renta_m2'], color='lightgray', flierprops=outliers)
+plt.title('Boxplot de renta por m²')
+plt.ylabel('Renta mensual por metro cuadrado')
+plt.show()
+```
+## Gráfica de dispersión
+
+```{python}
+plt.clf()
+sns.scatterplot(data=df1, x="metros_cuadrados", y="renta_mensual")
+plt.title("Renta vs Metros Cuadrados")
+plt.xlabel("Metros Cuadrados")
+plt.ylabel("Renta Mensual")
+plt.show()
+
+```
+
+# 2b. Ajuste del modelo 
+
+Si tenemos una variable categorica en python debemos de convertirla en dummy 
+
+```{python}
+#creamos las variables dummy con la funcion pd.get_dummies, con drop_first = FALSE se indica que se crearan nuevas columnas 
+df_encoded = pd.get_dummies(df1, columns=["zona"], drop_first = False)
+df_encoded.head(5) #mostramos las primeras 5 filas del dataframe
+```
+
+## Separación de variables y datos de entrenamiento y prueba
+
+```{python}
+X = df_encoded[['metros_cuadrados', 'antiguedad', 'num_recamaras', 'zona_Periferica' ]]
+y = df_encoded[['renta_mensual']]
+
+from sklearn.model_selection import train_test_split
+
+#a diferencia de R que se define el entrenamiento como 0.8 en python se especifica el tamaño de la prueba en este caso 0.2
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=123)
+
+```
+
+## Modelo
+
+Se observan valores similares y consistentes con lo obtenido en R, por lo que no se observa afectación por suprimir los valores negativos
+\pagebreak
+
+```{python}
+X_train_sm = sm.add_constant(X_train).astype(float)
+#funcion sm.OLS para calculas los minimos cuadrados ordinarios
+modelo = sm.OLS(y_train, X_train_sm).fit()
+print(modelo.summary())
+```
+
+
+# 3b. Pruebas de Diagnostico
+
+
+## Visualizar los residuos
+
+```{python}
+residuos = modelo.resid
+# Calcular la media de los residuos media_residuos = np.mean(residuos)
+media_residuos = np.mean(residuos)
+```
+
+
+```{python}
+plt.clf()
+
+# Graficar los residuos como puntos
+#Crea una secuencia numérica que representa el índice de cada residuo. Esto actúa como una línea de tiempo o el orden de la observación.
+plt.scatter(range(len(residuos)), residuos, color='black', s=10) 
+#plt.title dibuja una linea horizontal con el color rojo y estilo -- 
+plt.axhline(y=media_residuos, color='red', linestyle='--')  
+plt.title("Gráfico de residuos")
+plt.xlabel("Index")
+plt.ylabel("Residuos")
+plt.show()
+```
+
+
+## Pruebas de supuestos
+
+```{python}
+# Prueba Jarque-Bera (Normalidad):
+jb_stat, jb_p, _, _ = jarque_bera(residuos)
+print(f'jbp: {jb_p}')
+
+# Prueba de heteroscedasticidad (Breusch-Pagan):
+_, bp_pvalue, _, _ = het_breuschpagan(residuos, modelo.model.exog)
+print(f'bp_pvalue: {bp_pvalue}')
+
+# Durbin-Watson:
+dw = durbin_watson(residuos)
+print(f'dw: {dw}')
+
+```
+
+
+Jarque-Bera (Normalidad)
+Los residuos siguen una distribución normal.
+
+Breusch-Pagan (Heterocedasticidad) → p = 0.3787
+Los residuos tienen varianza constante (homocedasticidad).
+
+Durbin-Watson (Autocorrelación de orden 1) → DW ≈ 2.04
+No hay autocorrelación en los residuos.
+El valor está muy cercano a 2, así que no hay autocorrelación.
+
+
+## Datos de prueba
+
+Muy cercano a lo obtnenido en R
+
+```{python}
+lr = LinearRegression()
+lr.fit(X_train, y_train)
+pred_test = lr.predict(X_test)
+
+comparacion = pd.DataFrame({
+    "Real": y_test.values.flatten(),
+    "Prediccion": pred_test.flatten()
+})
+
+comparacion['Error'] = abs((comparacion['Real'] - comparacion['Prediccion']) / comparacion['Prediccion']) * 100
+promedio_error = comparacion['Error'].mean()
+print(f'promedio_error: {promedio_error}')
+```
+\pagebreak
+
+# 4b.- Predicciones
+
+## Nuevos casos hipoteticos
+
+```{python}
+# Crear DataFrame con nuevos departamentos
+nuevos_deptos = pd.DataFrame({
+    'metros_cuadrados': [70, 80, 90, 100, 110, 60, 85, 95, 105, 75],
+    'antiguedad': [10, 5, 20, 15, 7, 25, 12, 8, 18, 9],
+    'num_recamaras': [2, 3, 2, 3, 4, 1, 3, 2, 3, 2],
+    'zona_Periferica': [0, 1, 0, 0, 1, 1, 0, 0, 1, 0]  # 1 = Periférica, 0 = Céntrica
+})
+```
+
+
+## Predicciones con IC 95%
+
+```{python}
+
+# Agregar constante al nuevo DataFrame
+nuevos_deptos_sm = sm.add_constant(nuevos_deptos)
+
+# Realizar predicciones con intervalos de confianza
+predicciones = modelo.get_prediction(nuevos_deptos_sm)
+resultado = predicciones.summary_frame(alpha=0.05)
+
+# Mostrar predicción puntual e intervalos de confianza
+print(resultado[['mean', 'mean_ci_lower', 'mean_ci_upper']])
+```
+
+# 5b.- Evaluación del modelo
+
+-R² = 0.294 → El modelo explica solo el 29% de la variación en la renta mensual. Eso indica que faltan variables importantes.
+-Todas las variables son significativas porque sus p-values son menores a 0.05.
+
+## Interpretación de coeficientes
+
+renta_mensual = 4399.38 + 78.48 (metros_cuadrados) − 152.51 (antiguedad) + 920.5 (num_recamaras) − 2270.08 (zonaPeriferica)
+
+-metros_cuadrados: por cada metro extra, la renta sube $78.
+-antiguedad: por cada año extra, la renta baja $152.
+-num_recamaras: una recámara más aumenta la renta $920.
+-zona_Periferica: vivir en zona periférica reduce la renta en $2270 comparado con zona céntrica.
+
+Evaluación de supuestos
+
+-Normalidad: Jarque-Bera p = 0.81 → Se cumple.
+-Homoscedasticidad: Breusch-Pagan p = 0.37 → Se cumple.
+-Autocorrelación: Durbin-Watson ≈ 2 → No hay autocorrelación.
+
+
+# 6.- Informe
+
+Conclusiones:
+
+Al replicar nuestro modelo tanto en R como en Python, podemos ver que nuestros resultados, si bien no son exactos, se acercan, ya sea transformando los valores negativos a positivos o bien eliminándolos. Basándonos en el R², el modelo cuenta con un desempeño del 29.4%, lo cual se considera bajo para llegar a un nivel de predicción exacto; sin embargo, su desempeño puede mejorar si existen variables no contempladas que, al igual que las que tomamos en cuenta, también van a influir para determinar el valor de la renta mensual de una casa.
+Aun con ello, nuestro modelo cumple un desempeño que nos permite explicar en el presente lo que eleva o disminuye el precio de una renta. Con base en las pruebas realizadas, nos percatamos que la información que tenemos representa variables significativas, lo cual pudimos visualizar al mantener la hipótesis nula para asegurar que los errores en el modelo tuviesen una conducta estable y poder mantener la simplicidad del modelo para no añadir complejidad con una base que, si bien tiene información, carecería de más variables para poder realizar un modelo con mejor desempeño que fuese más allá de un análisis de mercado.
+
+En resumen:
+
+-La renta sube con más metros cuadrados y más recámaras.
+-La renta baja si el inmueble es más antiguo o está en zona periférica.
+-Aunque el modelo es válido, su capacidad explicativa es baja (R² = 0.294).
+
+Recomendaciones:
+
+-Incluir nuevas variables: ubicación exacta, servicios, seguridad, tipo de edificio, cercanía a transporte.
+-Evaluar modelos no lineales o con interacción si se desea mayor precisión.
+
+

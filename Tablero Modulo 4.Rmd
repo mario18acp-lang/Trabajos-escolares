@@ -1,0 +1,684 @@
+---
+title: "Intro Ciencia de Datos Modulo IV"
+output: html_document
+date: "2026-01-10"
+---
+
+# Procesos del documentacion del modulo IV del diplomado Intro Ciencia de Datos.
+
+En este escrito nos encargaremos de llevar a cabo el desarrollo de los pasos que usaremos para llevar a cabo las actividades del modulo IV del diplomado de ciencia de datos.
+
+## Las preparaciones para trabajar en el entorno de R y Python:
+
+### Cargamos la ruta de python: 
+
+```{r}
+library(reticulate)
+use_python("C:/Users/EQUIPO/AppData/Local/Programs/Python/Python313/python.exe")
+```
+
+### Ejemplo de multipicacion en R:
+
+```{r}
+2*2
+```
+
+### Ejemplo de multipicacion en python:
+
+```{python}
+2*2
+```
+
+## Ejemplo de la administacion de bases de datos con R y Python:
+
+### Ejemplo de tareas de seleccion:
+
+Las tareas de seleccion se realizan para conservar en una base de datos solo las columnas que sean de interes para el analista.
+
+#### En R:
+
+```{r}
+library(dplyr)
+library(gapminder)
+Data = gapminder
+# Modo directo:
+Data_2 = select(Data, country, continent)
+# Modo concatenado:
+Data_2 = Data %>%
+  select(country, continent)
+```
+
+#### En Python:
+
+```{python}
+import pandas as pd
+Data = pd.DataFrame(r.Data)
+Data_2 = Data.loc[:,['country','continent']]
+print(Data_2.head())
+```
+
+### Tareas de filtrado:
+
+Se especifican condiciones para reducir el numero de filas a conservar, y a partir de ahi poder hacer el analisis con las filas seleccionadas.
+
+#### En R:
+
+```{r}
+Data_2 = Data %>%
+  filter(continent =="Asia")
+head(Data_2, 6)
+```
+
+```{r}
+Data_2 = Data %>%
+  filter(year >= 2000)
+head(Data_2, 6)
+```
+
+#### En Python:
+
+```{python}
+Data_2 = Data[Data['continent']=='Asia']
+print(Data_2.head())
+```
+
+```{python}
+Data_2 = Data[Data['year']>=2000]
+print(Data_2.head())
+```
+
+
+### Tareas de agregacion:
+
+Generar o crear datos a partir de conjunto de datos, que permiten representar dicho conjunto. El mas popular es el promedio.
+
+#### En R:
+
+```{r}
+Data_2 = Data %>%
+  filter(continent =="Asia") %>%
+  summarise(Promedio = mean(lifeExp))
+Data_2
+```
+
+```{r}
+Data_2 = Data %>%
+  filter(continent =="Asia") %>%
+  summarise(Promedio = mean(lifeExp),
+            Mediana= median(lifeExp))
+Data_2
+```
+
+#### En Python:
+
+```{python}
+Data_2 = Data[Data['continent']=='Asia']['lifeExp'].mean()
+Data_2
+```
+
+```{python}
+Data_2 = Data[Data['continent']=='Asia']['lifeExp'].agg(['mean','median']).reset_index()
+Data_2
+```
+
+### Tareas de agrupamiento:
+
+Sirven para especificar las caracteristicas a partir del cual se pueden generar los agregados o estadisticos necesarios. Sirve para diferenciar entre categorias los resultados calculador con la agregacion.
+
+#### En R:
+
+```{r}
+Data_2 = Data %>%
+  filter(year==1952) %>%
+  group_by(continent) %>%
+  summarise(Promedio = mean(lifeExp))
+Data_2
+```
+
+```{r}
+Data_2 = Data %>%
+  group_by(continent, year) %>%
+  summarise(Promedio= mean(lifeExp))
+Data_2
+
+```
+
+```{r}
+# Condicionantes:
+# Y : &
+# O : |
+# Igual que: ==
+# Igual o mayor que: >=
+# Igual o menor que: <=
+# Menor que : <
+# Mayor que : >
+
+Data_2 = Data %>%
+  filter( year==1952 | year==2007) %>%
+  group_by(continent, year) %>%
+  summarise(Promedio = mean(lifeExp),
+            Desviacion = sd(lifeExp),
+            Mediana = median(lifeExp))
+Data_2
+```
+
+#### En Python:
+
+```{python}
+Data_2 = Data[Data['year']==1952].groupby('continent')['lifeExp'].mean().reset_index()
+Data_2
+```
+
+```{python}
+Data_2 = Data.groupby(['continent', 'year'])['lifeExp'].mean().reset_index()
+Data_2
+```
+
+```{python}
+Data_2 = Data[(Data['year']==1952)|(Data['year']==2007)].groupby(['continent','year'])['lifeExp'].agg(['mean','std','median']).reset_index()
+Data_2
+```
+
+
+## Introduccion a los modelos de regresion lineal:
+
+### En R:
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+peso = c(61,60,78,62,66,60,54,84,68)
+altura = c(162, 154, 180, 158, 171, 169, 166, 176, 163)
+df = data.frame(peso, altura)
+df %>%
+  ggplot(aes(x=altura,y=peso))+
+  geom_point()
+
+```
+
+```{r}
+lm = lm(peso ~ altura, data= df)
+print(summary(lm))
+
+```
+
+### En Python:
+
+```{python}
+# scikit-learn instalar asi
+# pip install scikit-learn
+
+import pandas as pd
+import numpy as np
+from sklearn.linear_model import LinearRegression 
+import matplotlib.pyplot as plt
+import seaborn as sns
+import statsmodels.api as sm
+from scipy import stats
+
+df = {'peso': [61,60,78,62,66,60,54,84,68], 'altura': [162, 154, 180, 158, 171, 169, 166, 176, 163]}
+df = pd. DataFrame(df)
+plt.clf()
+plt.scatter(df[['altura']],df[['peso']])
+plt.show()
+```
+
+```{python}
+# Variables explicativas:
+X_train= df[['altura']]
+# Variable objetivo:
+y_train = df[['peso']]
+# Sklearn:
+lm = LinearRegression()
+lm.fit(X_train, y_train)
+lm.score(X_train, y_train)
+lm.coef_
+lm.intercept_
+```
+
+```{python}
+X_constant = sm.add_constant(X_train)
+lin_reg = sm.OLS(y_train, X_constant).fit()
+print(lin_reg.summary())
+
+```
+
+
+
+
+
+```{r}
+df$sexo_dummy= ifelse(df$sexo =="Mujer", 0, 1)
+modelo = lm(peso ~ altura + sexo_dummy, data=df)
+summary(modelo)
+```
+
+```{r}
+df$pred = predict(modelo)
+ggplot(df, aes(x=altura, y=peso, color=sexo))+
+  geom_point() +
+  geom_line(aes(y=pred))
+```
+
+
+### En Python
+
+```{python}
+df = {'peso': [61,60,78,62,66,60,54,84,68],
+'altura': [162,154,180,158,171,169,166,176,163],
+'sexo': ['Hombre', 'Mujer', 'Hombre', 'Mujer', 'Hombre', 'Mujer', 'Mujer', 'Hombre', 'Hombre']}
+df = pd. DataFrame(df)
+plt.clf()
+sns.scatterplot(data= df, x='altura', y='peso', hue='sexo')
+plt.show()
+
+```
+
+## Pruebas sobre los residuos y evaluacion de resultados en modelos de regresion lineal multiple:
+
+### En R:
+```{r}
+library(tseries)
+library(lmtest)
+library(car)
+library(ggplot2)
+library(forecast)
+library(caret)
+
+data <- read.csv("C:/Users/EQUIPO/Downloads/base_ingresos_genero.csv")
+
+```
+
+
+
+```{r}
+set.seed(123)
+# Separamos base de entrenamiento y base de prueba:
+trainindex = createDataPartition(data[["Ingreso_mensual"]], p=0.8, list=FALSE)
+train = data[trainindex, ]
+test= data[-trainindex, ]
+
+
+```
+
+```{r}
+modelo = lm(Ingreso_mensual ~ Edad + Promedio_licenciatura + Experiencia_meses +
+              Idiomas_extranjeros + Genero, data= train)
+summary(modelo)
+              
+```
+```{r}
+#Analisis de los residuos
+residuos = residuals(modelo)
+plot(residuos, type='l')
+
+#Normalidad -Jarque-Bera:
+jb_test = jarque.bera.test(residuos)
+jb_test
+
+#Homoscedasticidad - Brunch-Pagan:
+bp_test = bptest(modelo)
+bp_test
+
+#Autocorrelacion de orden 1: Durbin Watson:
+dw_test = durbinWatsonTest(modelo)
+dw_test
+#Autocorrelacion de orden mayor: Corelograma
+acf(residuos)
+```
+```{r}
+pred_test = predict(modelo, newdata = test)
+comparacion = data.frame(
+  Real = test$Ingreso_mensual,
+  Prediccion = pred_test,
+  Error = abs((test$Ingreso_mensual-pred_test)/pred_test)*100
+)
+mean(comparacion$Error)
+```
+```{python}
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+import statsmodels.api as sm
+from sklearn.model_selection import train_test_split #separacion de datos de prueba y entrenamiento
+from statsmodels.stats.stattools import jarque_bera
+from statsmodels.stats.diagnostic import het_breuschpagan
+from statsmodels.stats. stattools import durbin_watson
+from statsmodels.graphics.tsaplots import plot_acf
+
+df = pd.read_csv("C:/Users/EQUIPO/Downloads/base_ingresos_genero.csv")
+df.head(5)
+
+```
+
+```{python}
+df_encoded = pd.get_dummies(df, columns=["Genero"], drop_first = False)
+df_encoded.head(5)
+
+```
+```{python}
+x = df_encoded[['Edad','Promedio_licenciatura','Experiencia_meses','Idiomas_extranjeros','Genero_Mujer']]
+y = df_encoded[['Ingreso_mensual']]
+x_train, x_test, y_train, y_test = train_test_split(x,y,test_size=0.2,random_state = 123)
+```
+
+```{python}
+x_train_sm = sm.add_constant(x_train).astype(float)
+modelo = sm.OLS(y_train, x_train_sm).fit()
+print(modelo.summary())
+```
+
+
+```{python}
+residuos = modelo.resid
+
+#Prueba Jarque-Bera (Normalidad):
+jb_stat,jb_p,_,_=jarque_bera(residuos)
+print(jb_p)
+
+#Prueba de heteroscedasticidad (Breuch Pagan):
+_,bp_pvalue,_,_=het_breuschpagan(residuos, modelo.model.exog)
+print(bp_pvalue)
+
+#Durbin Watson:
+dw = durbin_watson(residuos)
+print(dw)
+```
+```{python}
+lr = LinearRegression()
+lr.fit(x_train, y_train)
+pred_test = lr.predict(x_test)
+
+comparacion = pd.DataFrame({
+  "Real": y_test.values.flatten(),
+"Prediccion": pred_test.flatten()
+})
+comparacion['Error'] = abs((comparacion['Real']-comparacion['Prediccion'])/comparacion['Prediccion'])*100
+promedio_error = comparacion['Error'].mean()
+print(promedio_error)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+matricula = c(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1,
+0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0,
+0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1,
+0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0,
+0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1,
+0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0,
+0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1)
+ 
+matematicas = c(41, 53, 54, 47, 57, 51, 42, 45, 54, 52, 51, 51, 71, 57, 50, 43, 51, 60, 62, 57,
+35, 75, 45, 57, 45, 46, 66, 57, 49, 49, 57, 64, 63, 57, 50, 58, 75, 68, 44, 40, 41, 62, 57, 43,
+48, 63, 39, 70, 63, 59, 61, 38, 61, 49, 73, 44, 42, 39, 55, 52, 45, 61, 39, 41, 50, 40, 60, 47,
+59, 49, 46, 58, 71, 58, 46, 43, 54, 56, 46, 54, 57, 54, 71, 48, 40, 64, 51, 39, 40, 61, 66, 49,
+65, 52, 46, 61, 72, 71, 40, 69, 64, 56, 49, 54, 53, 66, 67, 40, 46, 69, 40, 41, 57, 58, 57, 37,
+55, 62, 64, 40, 50, 46, 53, 52, 45, 56, 45, 54, 56, 41, 54, 72, 56, 47, 49, 60, 54, 55, 33, 49,
+43, 50, 52, 48, 58, 43, 41, 43, 46, 44, 43, 61, 40, 49, 56, 61, 50, 51, 42, 67, 53, 50, 51, 72,
+48, 40, 53, 39, 63, 51, 45, 39, 42, 62, 44, 65, 63, 54, 45, 60, 49, 48, 57, 55, 66, 64, 55, 42,
+56, 53, 41, 42, 53, 42, 60, 52, 38, 57, 58, 65)
+datos = data.frame(matricula=matricula, matematicas=matematicas)
+```
+```{r}
+datos %>%
+  group_by(matricula) %>%
+  summarise(Numero = n())
+```
+```{r}
+datos %>%
+  ggplot(aes(x=as.character(matricula),y=matematicas, fill=as.character(matricula)))+
+  geom_violin()+
+  geom_boxplot()
+```
+```{r}
+x= datos[,'matematicas']
+y= datos[,'matricula']
+modelo = glm(y ~ x, family ="binomial")
+summary(modelo)
+```
+```{r}
+# Odd Ratios: impacto de las variables explicativas en la probabilidad
+odd_ratios = exp(coef(modelo))
+print(odd_ratios)
+# valor de odd ratio -1
+# 1.1692 - 1 =0.1692 * 100 = 16.92%
+# Por cada unidad porcentual de matematicas (esta expresada en porcentaje), la probabilidad de que el estudiante repruebe aumenta en un 16%
+# sup 0.9
+# 0.9 - 1 = -0.1
+# Por cada unidad porcentual de matematicas , la probabilidad de que el estudiante repruebe disminuye en un 10%
+```
+```{r}
+predicciones = predict(modelo, data.frame(matematicas = x),
+                       type= 'response')
+head(predicciones, 10)
+```
+```{r}
+clasificacion = ifelse(predicciones<0.5, 0, 1)
+clasificacion
+```
+```{r}
+model = modelo
+y_prob= predicciones
+thresholds = seq(0,1, length.out= 100)
+precisions = vector()
+recalls = vector()
+f1_score = vector()
+for (threshold in thresholds){
+  y_pred = ifelse(y_prob<threshold, 0, 1)
+  precision = sum(y_pred[matricula==1]==1)/sum(y_pred==1)
+  recall = sum(y_pred[matricula==1]==1)/sum(matricula==1)
+  f1 = 2*((precision*recall)/(precision+recall))
+  precisions = c(precisions, precision)
+  recalls = c(recalls, recall)
+  f1_score = c(f1_score, f1)
+}
+max_f1_score = which.max(f1_score)
+max_f1_score
+optimal_threshold = thresholds[max_f1_score]
+optimal_threshold
+max_f1_score = f1_score[max_f1_score]
+max_f1_score
+
+```
+
+
+
+
+
+
+
+### Ejemplo de modelo de regresion logistica en R:
+```{r}
+library(caret)
+library(pROC)
+library(dplyr)
+library(ggplot2)
+
+data("GermanCredit")
+df = GermanCredit
+df$Class_Dummy = ifelse(df$Class=="Bad",1,0)
+```
+
+```{r}
+set.seed(123)
+index = createDataPartition(df[['Class_Dummy']], p=0.8, list=FALSE)
+train = df[index,]
+test = df[-index,]
+```
+
+```{r}
+names(train)
+modelo = glm(Class_Dummy ~ Duration + Amount + 
+               CheckingAccountStatus.lt.0 + EmploymentDuration.lt.1 + 
+               Housing.Own, data=train, family ='binomial')
+summary(modelo)
+```
+```{r}
+odds = exp(coef(modelo))
+odds
+# variables numericas:
+# duration (meses): 1.0340 - 1 = 3.4% por cada mes  adicional que dure un creidto, se incrementa un 3.4% la probabilidad de una mala calificacion
+# amount (unidades): 1.0000326 - 1 = 0.00326%
+# variables categoricas:
+# status: 3.2854882
+# empleo:2.1767583  0: si tiene, 1: no tiene
+# cuenta con casa propia: 0.6916959 = es que no cuenta, 1 es que si cuenta
+```
+```{r}
+pred_prob = predict(modelo, newdata = test, type="response")
+pred_clase = ifelse(pred_prob >= 0.5, 1, 0)
+```
+
+
+
+```{r}
+conf_matrix = confusionMatrix(factor(pred_clase), factor(test$Class_Dummy),
+                              positive= "1")
+print(conf_matrix)
+```
+
+```{r}
+# curva ROC:
+roc_obj = roc(test$Class_Dummy, pred_prob)
+# AUC:
+auc_value = auc(roc_obj)
+plot(roc_obj, col="blue", main="Curva ROC - Modelo Logistico")
+abline(a=0,b=1)
+print(auc_value)
+```
+
+###Clusterizacion en R:
+```{r}
+library(cluster)
+library(factoextra)
+library(ggplot2)
+library(dplyr)
+
+set.seed(123)
+Clientes = data.frame(
+  ID= 1:200,
+  IngresoAnual = rnorm(200, mean=50000, sd=15000),
+  FrecuenciaCompra = rpois(200, lambda =10),
+  Edad = sample(18:70, 200, replace =TRUE)
+)
+```
+
+
+```{r}
+#primero escalamos las variables:
+clientes_scaled = Clientes %>%
+  select(-ID) %>%
+  scale()
+```
+
+```{r}
+fviz_nbclust(clientes_scaled, kmeans, method="wss")+
+  labs(title="Metodo del codo.")
+```
+```{r}
+modelo_kmeans= kmeans(clientes_scaled, centers= 4)
+summary(modelo_kmeans)
+```
+
+```{r}
+Clientes$cluster = as.factor(modelo_kmeans$cluster)
+```
+
+```{r}
+Clientes %>%
+  group_by(cluster) %>%
+  summarise(PromedioIngreso = mean(IngresoAnual),
+            PromedioEdad = mean(Edad),
+            PromedioFrecuenciaCompra = mean(FrecuenciaCompra),
+            Conteo = n())
+```
+
+```{r}
+nuevo_cliente = data.frame(
+  IngresoAnual = 70000,
+  FrecuenciaCompra =15,
+  Edad = 30
+)
+media_original = attr(clientes_scaled,
+                      "scaled:center")
+sd_original = attr(clientes_scaled,
+                   "scaled:scale")
+nuevo_cliente_scaled = scale(nuevo_cliente,
+                             center= media_original,
+                             scale= sd_original)
+distancias = apply(modelo_kmeans$centers, 1,
+                   function(centroide){
+                     sum(nuevo_cliente_scaled - centroide)^2
+                   })
+Cluster_predicho =which.min(distancias)
+Cluster_predicho
+distancias                  
+```
+##Clusterizacion en python:
+```{python}
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot  as plt
+import seaborn as sns
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
+
+np.random.seed(123)
+n=200
+Clientes = pd.DataFrame({
+  'ID': np.arange(1,n+1),
+  'IngresoAnual': np.random.normal(50000, 15000, n),
+  'FrecuenciaCompra': np.random.poisson(10,n),
+  'Edad': np.random.randint(18,71, n)
+})
+```
+```{python}
+features =['IngresoAnual', 'FrecuenciaCompra', 'Edad']
+scaler = StandardScaler()
+clientes_scaled= scaler.fit_transform(Clientes[features])
+```
+
+```{python}
+wcss =[]
+for k in range(1,11):
+  kmeans = KMeans(n_clusters = k, n_init=10, random_state= 123)
+  kmeans.fit(clientes_scaled)
+  wcss.append(kmeans.inertia_)
+  
+plt.clf()
+plt.plot(range(1,11), wcss, marker='o')
+plt.title('Metodo del codo')
+plt.xlabel('Numero de clusters')
+plt.ylabel('wcss')
+plt.show()
+```
+
+```{python}
+kmeans = KMeans(n_clusters= 4, n_init=25,random_state=123)
+Clientes['Cluster']= kmeans.fit_predict(clientes_scaled)
+```
+
+```{python}
+resumen = Clientes.groupby('Cluster')[features].mean()
+resumen['Cantidad'] = Clientes.groupby('Cluster').size()
+print(resumen)
+```
+
+```{python}
+nuevo_cliente = pd.DataFrame({
+  'IngresoAnual' : [70000],
+  'FrecuenciaCompra' : [15],
+  'Edad' : [30]
+})
+nuevo_cliente_scaled = scaler.transform(nuevo_cliente)
+
+distancias = np.linalg.norm(kmeans.cluster_centers_ - nuevo_cliente_scaled, axis=1)
+Cluster_predicho
+distancias
+```
+
